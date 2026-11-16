@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traçabilité des terres</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg: #1c1c1c; --bg-side: #171717; --panel: #232323; --panel-2: #282828;
+    --border: #2e2e2e; --border-2: #3a3a3a; --text: #ededed; --muted: #8f8f8f;
+    --green: #3ecf8e; --green-dk: #24b47e; --green-bg: rgba(62,207,142,.12);
+    --red: #f87171; --red-bg: rgba(248,113,113,.12); --amber: #fbbf24; --amber-bg: rgba(251,191,36,.12);
+    --radius: 6px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.45 Inter, system-ui, sans-serif; }
+  .mono, td.num, .num { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .cache { display: none !important; }
+  a { color: var(--green); }
+
+  /* ---------- Connexion ---------- */
+  #ecranConnexion { min-height: 100%; display: grid; place-items: center; padding: 20px; }
+  .login { width: 360px; max-width: 100%; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 28px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
+  .logo i { width: 26px; height: 26px; border-radius: 6px; background: linear-gradient(135deg, var(--green), var(--green-dk)); display: inline-block; }
+
+  /* ---------- Structure ---------- */
+  #ecranAppli { display: grid; grid-template-columns: 230px 1fr; min-height: 100%; }
+  aside { background: var(--bg-side); border-right: 1px solid var(--border); padding: 16px 10px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100vh; }
+  aside .logo { padding: 4px 10px 18px; }
+  .nav-titre { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 12px 10px 4px; }
+  .nav { all: unset; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--radius); color: #bdbdbd; cursor: pointer; }
+  .nav:hover { background: var(--panel); color: var(--text); }
+  .nav.actif { background: var(--panel-2); color: var(--text); }
+  .nav svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+  aside .bas { margin-top: auto; border-top: 1px solid var(--border); padding: 12px 10px 0; color: var(--muted); font-size: 12px; word-break: break-all; }
+  main { padding: 0; min-width: 0; }
+  .entete { border-bottom: 1px solid var(--border); padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .entete h1 { font-size: 16px; font-weight: 500; margin: 0; }
+  .contenu { padding: 22px 28px 60px; }
+
+  /* ---------- Composants ---------- */
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+  .card-h { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .card-h h3 { margin: 0; font-size: 14px; font-weight: 500; }
+  .card-b { padding: 16px; }
+  .grille { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr); gap: 18px; align-items: start; }
+  .champs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+  .champs .plein { grid-column: 1 / -1; }
+  label.ch { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #c8c8c8; }
+  label.ch small { color: var(--muted); font-size: 12px; }
+  input, select { background: #1a1a1a; color: var(--text); border: 1px solid var(--border-2); border-radius: var(--radius); padding: 8px 10px; font: inherit; width: 100%; }
+  input:focus, select:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 2px var(--green-bg); }
+  input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--green); padding: 0; }
+  input:disabled, select:disabled { opacity: .55; }
+  .case { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .btn { border: 1px solid var(--border-2); background: var(--panel-2); color: var(--text); padding: 7px 14px; border-radius: var(--radius); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .btn:hover { border-color: #555; }
+  .btn.primaire { background: var(--green-dk); border-color: var(--green); color: #fff; }
+  .btn.primaire:hover { background: var(--green); color: #111; }
+  .btn.danger { color: var(--red); }
+  .btn.danger.confirm { background: var(--red); color: #111; border-color: var(--red); }
+  .btn.petit { padding: 4px 10px; font-size: 12px; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
+  .tbl-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th { background: var(--panel-2); color: var(--muted); font-weight: 500; text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr.cliquable { cursor: pointer; }
+  tbody tr:hover td { background: #262626; }
+  tbody tr.sel td { background: var(--green-bg); }
+  th.num, td.num { text-align: right; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; border: 1px solid; }
+  .badge.vert { color: var(--green); border-color: rgba(62,207,142,.35); background: var(--green-bg); }
+  .badge.rouge { color: var(--red); border-color: rgba(248,113,113,.35); background: var(--red-bg); }
+  .badge.ambre { color: var(--amber); border-color: rgba(251,191,36,.35); background: var(--amber-bg); }
+  .badge.gris { color: var(--muted); border-color: var(--border-2); }
+  .info { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; font-size: 13px; color: #cfcfcf; }
+  .info b { color: var(--text); }
+  .vide { color: var(--muted); padding: 22px 16px; text-align: center; }
+  .muted { color: var(--muted); }
+  .alerte { color: var(--red); }
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; }
+  .pill { all: unset; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border-2); color: #bdbdbd; cursor: pointer; font-size: 13px; }
+  .pill:hover { color: var(--text); border-color: #555; }
+  .pill.actif { background: var(--green-bg); color: var(--green); border-color: rgba(62,207,142,.4); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  .stat div { font-size: 22px; font-weight: 500; margin-top: 4px; }
+  .pile > * + * { margin-top: 18px; }
+  .ligne { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .ligne > label { flex: 1; min-width: 150px; }
+  .cats { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; }
+  #toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 99; }
+  .toast { background: var(--panel-2); border: 1px solid var(--border-2); border-left: 3px solid var(--green); padding: 10px 14px; border-radius: var(--radius); min-width: 260px; max-width: 420px; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+  .toast.err { border-left-color: var(--red); }
+  @media (max-width: 900px) {
+    #ecranAppli { grid-template-columns: 1fr; }
+    aside { position: static; height: auto; flex-direction: row; flex-wrap: wrap; }
+    aside .logo, .nav-titre, aside .bas { display: none; }
+    .grille, .champs { grid-template-columns: 1fr; }
+    .contenu, .entete { padding-left: 14px; padding-right: 14px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===================== CONNEXION ===================== -->
+<div id="ecranConnexion">
+  <form class="login" id="formConnexion">
+    <div class="logo"><i></i> Traçabilité des terres</div>
+    <p class="muted" style="margin:6px 0 22px">Connectez-vous pour continuer</p>
+    <div class="pile">
+      <label class="ch">Email<input type="email" id="email" required autocomplete="username"></label>
+      <label class="ch">Mot de passe<input type="password" id="mdp" required autocomplete="current-password"></label>
+      <button class="btn primaire" style="width:100%;padding:9px">Se connecter</button>
+      <p id="msgConnexion" class="alerte" style="margin:0"></p>
+    </div>
+  </form>
+</div>
+
+<!-- ===================== APPLICATION ===================== -->
+<div id="ecranAppli" class="cache">
+  <aside>
+    <div class="logo"><i></i> Traçabilité</div>
+    <div class="nav-titre">Exploitation</div>
+    <button class="nav actif" data-onglet="entree"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg>Entrée</button>
+    <button class="nav" data-onglet="sortie"><svg viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg>Sortie</button>
+    <button class="nav" data-onglet="caps"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Tableau de bord</button>
+    <button class="nav" data-onglet="registres"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 9h16M4 14h16M9 4v16"/></svg>Registres</button>
+    <div class="nav-titre">Administration</div>
+    <button class="nav" data-onglet="gestion"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Gestionnaire</button>
+    <div class="bas"><div id="utilisateur"></div><button class="btn petit" id="btnDeconnexion" style="margin-top:8px">Déconnexion</button></div>
+  </aside>
+
+  <main>
+    <div class="entete"><h1 id="titrePage">Entrée</h1><span class="muted mono" id="horloge"></span></div>
+    <div class="contenu">
+
+      <!-- ---------- ENTRÉE ---------- -->
+      <section id="onglet-entree" class="grille">
+        <div class="pile">
+          <form class="card" id="formEntree">
+            <div class="card-h"><h3>Nouvelle entrée</h3></div>
+            <div class="card-b pile">
+              <div class="champs">
+                <label class="ch">Date<input type="date" id="eDate" required></label>
+                <label class="ch">Heure<input type="time" id="eHeure" step="1" required></label>
+                <label class="ch plein">CAP d'entrée<select id="eCap" required></select></label>
+                <label class="ch">Catégorie<select id="eCat" required></select></label>
+                <label class="ch">Camion<select id="eVeh" required></select></label>
+              </div>
+              <div id="eLotInfo" class="info cache"></div>
+              <label class="ch">Poids brut (t)<input type="number" id="eBrut" step="0.02" min="0" required class="mono"></label>
+              <div id="eNet" class="info cache"></div>
+              <div class="actions"><button class="btn primaire">Enregistrer l'entrée</button></div>
+            </div>
+          </form>
+          <div class="card"><div class="card-h"><h3>Dernières entrées du jour</h3></div><div class="tbl-wrap" id="dernieresEntrees"></div></div>
+        </div>
+        <div class="card"><div class="card-h"><h3>Nouveau camion / nouvelle tare</h3></div><div class="card-b" id="tareEntree"></div></div>
+      </section>
+
+      <!-- ---------- SORTIE ---------- -->
+      <section id="onglet-sortie" class="grille cache">
+        <div class="pile">
+          <form class="card" id="formSortie">
+            <div class="card-h"><h3>Nouvelle sortie</h3></div>
+            <div class="card-b pile">
+              <div class="champs">
+                <label class="ch">Date<input type="date" id="sDate" required></label>
+                <label class="ch">Heure<input type="time" id="sHeure" step="1" required></label>
+                <label class="ch plein">CAP de sortie<select id="sCap" required></select></label>
+                <label class="ch">Matériau<select id="sMat" required></select></label>
+                <label class="ch">N° de lot <small>facultatif</small><input type="text" id="sLot"></label>
+                <label class="ch plein">Camion<select id="sVeh" required></select></label>
+              </div>
+              <label class="ch">Poids brut (t)<input type="number" id="sBrut" step="0.02" min="0" required class="mono"></label>
+              <div id="sNet" class="info cache"></div>
+              <div class="actions"><button class="btn primaire">Enregistrer la sortie</button></div>
+            </div>
+          </form>
+          <div class="card"><div class="card-h"><h3>Dernières sorties du jour</h3></div><div class="tbl-wrap" id="dernieresSorties"></div></div>
+        </div>
+        <div class="card"><div class="card-h"><h3>Nouveau camion / nouvelle tare</h3></div><div class="card-b" id="tareSortie"></div></div>
+      </section>
+
+      <!-- ---------- TABLEAU DE BORD ---------- -->
+      <section id="onglet-caps" class="cache">
+        <div class="stats" id="stats"></div>
+        <div class="pile">
+          <div id="vueCapsEntree" class="pile"></div>
+          <div class="card"><div class="card-h"><h3>CAP de sortie</h3></div><div class="tbl-wrap" id="vueCapsSortie"></div></div>
+          <div class="card"><div class="card-h"><h3>Stock des matériaux</h3></div><div class="tbl-wrap" id="vueStock"></div></div>
+        </div>
+      </section>
+
+      <!-- ---------- REGISTRES ---------- -->
+      <section id="onglet-registres" class="cache pile">
+        <div class="card"><div class="card-b ligne">
+          <label class="ch">Registre<select id="rType"><option value="entrees">Entrées</option><option value="sorties">Sorties</option></select></label>
+          <label class="ch">Du<input type="date" id="rDu"></label>
+          <label class="ch">Au<input type="date" id="rAu"></label>
+          <button class="btn primaire" id="btnRegistre">Afficher</button>
+          <button class="btn" id="btnCsv">Exporter CSV</button>
+        </div></div>
+        <div class="card"><div class="card-h"><h3 id="registreTitre">Résultats</h3></div><div class="tbl-wrap" id="vueRegistre"></div></div>
+      </section>
+
+      <!-- ---------- GESTIONNAIRE ---------- -->
+      <section id="onglet-gestion" class="cache">
+        <div class="pills" id="gPills"></div>
+        <div id="gVue"></div>
+      </section>
+
+    </div>
+  </main>
+</div>
+<div id="toasts"></div>
+
+<script>
+// ===================== CONFIGURATION =====================
+// Clé PUBLIQUE : elle peut être visible, les données sont protégées par la RLS.
+const SUPABASE_URL = "https://cyobkyhogebacdnrfdwu.supabase.co";
+const SUPABASE_KEY = "sb_publishable_daXRRzQflYOdjtfF_1Tadg_BPbmefib";
+const SEUIL_ALERTE_LOT = 0.95;
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+let R = {};
+let registreCourant = [];
+let demarre = false;
+
+// ===================== OUTILS =====================
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const aujourdhui = () => new Date().toLocaleDateString("sv-SE");
+const maintenant = () => new Date().toTimeString().slice(0, 8);
+const nf = (v, d = 2) => Number(v ?? 0).toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: 3 });
+const t = kg => nf(kg / 1000);
+const euros = v => v == null ? "—" : Number(v).toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
+const dateFr = d => d ? new Date(d + "T12:00:00").toLocaleDateString("fr-FR") : "—";
+const nomEnt = id => R.entreprises.find(e => e.id === id)?.nom ?? "?";
+const nomCh = id => R.chantiers.find(e => e.id === id)?.nom ?? "?";
+const nomExu = id => R.exutoires.find(e => e.id === id)?.nom ?? "?";
+const normImmat = s => s.toUpperCase().replace(/[\s-]/g, "");
+const badge = (txt, c) => `<span class="badge ${c}">${esc(txt)}</span>`;
+
+function toast(texte, erreur) {
+  const d = document.createElement("div");
+  d.className = "toast" + (erreur ? " err" : ""); d.textContent = texte;
+  $("toasts").appendChild(d); setTimeout(() => d.remove(), erreur ? 7000 : 3500);
+}
+function lisible(e) {
+  const m = e?.message || String(e);
+  if (e?.code === "23505") return "Cet élément existe déjà (doublon).";
+  if (e?.code === "23503") return m.includes("delete") || m.includes("update or delete")
+    ? "Impossible : cet élément est utilisé ailleurs (CAP, pesée…)."
+    : "Référence invalide : un élément lié est manquant.";
+  if (e?.code === "23514") {
+    if (m.includes("siret")) return "Le SIRET doit contenir exactement 14 chiffres.";
+    if (m.includes("code")) return "Le code doit contenir 3 lettres majuscules.";
+    if (m.includes("poids") || m.includes("check")) return "Valeur invalide (le poids brut doit être supérieur à la tare).";
+    return "Valeur invalide.";
+  }
+  return m;
+}
+function options(sel, liste, valeur, libelle, vide = "— choisir —") {
+  const avant = sel.value;
+  sel.innerHTML = `<option value="">${esc(vide)}</option>` +
+    liste.map(x => `<option value="${x[valeur]}">${esc(libelle(x))}</option>`).join("");
+  if ([...sel.options].some(o => o.value === avant)) sel.value = avant;
+}
+function tableau(colonnes, lignes, opts = {}) {
+  if (!lignes.length) return `<div class="vide">${opts.vide || "Aucune donnée."}</div>`;
+  return `<table><thead><tr>${colonnes.map(c => `<th class="${c.num ? "num" : ""}">${esc(c.titre)}</th>`).join("")}</tr></thead><tbody>` +
+    lignes.map(l => `<tr class="${opts.clic ? "cliquable" : ""} ${opts.sel != null && l.id === opts.sel ? "sel" : ""}" ${opts.clic ? `data-id="${l.id}"` : ""}>` +
+      colonnes.map(c => `<td class="${c.num ? "num" : ""}">${c.html ? c.html(l) : esc(c.val(l))}</td>`).join("") + `</tr>`).join("") +
+    `</tbody></table>`;
+}
+// Bouton supprimer en deux temps (pas de boîte de dialogue)
+function boutonSuppr(btn, action) {
+  btn.onclick = () => {
+    if (!btn.classList.contains("confirm")) {
+      btn.classList.add("confirm"); btn.textContent = "Confirmer la suppression";
+      setTimeout(() => { btn.classList.remove("confirm"); btn.textContent = "Supprimer"; }, 4000);
+    } else action();
+  };
+}
+setInterval(() => $("horloge").textContent = new Date().toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" }), 1000);
+
+// ===================== CONNEXION =====================
+$("formConnexion").onsubmit = async e => {
+  e.preventDefault();
+  $("msgConnexion").textContent = "";
+  const { error } = await sb.auth.signInWithPassword({ email: $("email").value, password: $("mdp").value });
+  if (error) $("msgConnexion").textContent = "Connexion refusée : " + error.message;
+};
+$("btnDeconnexion").onclick = () => sb.auth.signOut();
+sb.auth.onAuthStateChange((_evt, session) => {
+  if (session) {
+    $("ecranConnexion").classList.add("cache"); $("ecranAppli").classList.remove("cache");
+    $("utilisateur").textContent = session.user.email;
+    if (!demarre) { demarre = true; setTimeout(demarrer, 0); }
+  } else {
+    demarre = false;
+    $("ecranAppli").classList.add("cache"); $("ecranConnexion").classList.remove("cache");
+  }
+});
+
+// ===================== NAVIGATION =====================
+const TITRES = { entree: "Entrée", sortie: "Sortie", caps: "Tableau de bord", registres: "Registres", gestion: "Gestionnaire" };
+let ongletCourant = "entree";
+document.querySelectorAll(".nav").forEach(b => b.onclick = () => ouvrirOnglet(b.dataset.onglet));
+function ouvrirOnglet(o) {
+  ongletCourant = o;
+  document.querySelectorAll(".nav").forEach(x => x.classList.toggle("actif", x.dataset.onglet === o));
+  document.querySelectorAll("section").forEach(s => s.classList.add("cache"));
+  $("onglet-" + o).classList.remove("cache");
+  $("titrePage").textContent = TITRES[o];
+  if (o === "caps") afficherCaps();
+  if (o === "registres") afficherRegistre();
+  if (o === "gestion") afficherGestion();
+}
+
+// ===================== RÉFÉRENTIELS =====================
+async function chargerReferentiels() {
+  const req = {
+    ecocentres:  sb.from("ecocentres").select("*").order("nom"),
+    entreprises: sb.from("entreprises").select("*").order("nom"),
+    chantiers:   sb.from("chantiers").select("*").order("nom"),
+    chantiersEnt: sb.from("chantiers_entreprises").select("*"),
+    categories:  sb.from("categories").select("*").order("libelle"),
+    codes:       sb.from("codes_dechets").select("*").order("code"),
+    exutoires:   sb.from("exutoires").select("*").order("nom"),
+    materiaux:   sb.from("materiaux").select("*").order("nom"),
+    vehicules:   sb.from("vehicules").select("*").order("immatriculation"),
+    historique:  sb.from("vehicules_historique").select("*").order("en_vigueur_depuis", { ascending: false }),
+    capsE:       sb.from("caps_entree").select("*").order("numero", { ascending: false }),
+    capsECat:    sb.from("caps_entree_categories").select("*"),
+    capsS:       sb.from("caps_sortie").select("*").order("numero", { ascending: false }),
+  };
+  const cles = Object.keys(req);
+  const res = await Promise.all(Object.values(req));
+  res.forEach((r, i) => { if (r.error) throw r.error; R[cles[i]] = r.data; });
+}
+async function rafraichir() {
+  await chargerReferentiels();
+  remplirEntree(); remplirSortie(); formTare("tareEntree"); formTare("tareSortie");
+}
+const etatVehicule = vid => R.historique.find(h => h.vehicule_id === vid && new Date(h.en_vigueur_depuis) <= new Date());
+function remplirCamions(sel) {
+  options(sel, R.vehicules, "id", v => { const e = etatVehicule(v.id);
+    return e ? `${v.immatriculation} — tare ${t(e.tare_kg)} t — ${nomEnt(e.transporteur_id)}` : `${v.immatriculation} — pas de tare`; });
+}
+
+async function demarrer() {
+  try { await chargerReferentiels(); } catch (e) { toast("Erreur de chargement : " + lisible(e), true); return; }
+  for (const p of ["e", "s"]) { $(p + "Date").value = aujourdhui(); $(p + "Heure").value = maintenant(); }
+  $("rDu").value = aujourdhui(); $("rAu").value = aujourdhui();
+  remplirEntree(); remplirSortie(); formTare("tareEntree"); formTare("tareSortie");
+  dernieres("entrees"); dernieres("sorties");
+}
+
+// ===================== ENTRÉE =====================
+function remplirEntree() {
+  const d = $("eDate").value || aujourdhui();
+  options($("eCap"), R.capsE.filter(c => c.date_validite >= d), "id",
+    c => `${c.numero} — ${nomEnt(c.entreprise_id)} / ${nomCh(c.chantier_id)}`, "— choisir un CAP valide —");
+  majCategories(); remplirCamions($("eVeh"));
+}
+$("eDate").onchange = remplirEntree;
+function majCategories() {
+  const capId = Number($("eCap").value);
+  const cats = R.capsECat.filter(x => x.cap_entree_id === capId)
+    .map(x => ({ ...x, libelle: R.categories.find(c => c.id === x.categorie_id)?.libelle ?? "?" }))
+    .sort((a, b) => a.libelle.localeCompare(b.libelle));
+  options($("eCat"), cats, "categorie_id", c => c.libelle);
+  infoLot();
+}
+$("eCap").onchange = majCategories;
+$("eCat").onchange = infoLot;
+
+async function infoLot() {
+  const capId = Number($("eCap").value), catId = Number($("eCat").value), zone = $("eLotInfo");
+  delete zone.dataset.lotId;
+  if (!capId || !catId) { zone.classList.add("cache"); return; }
+  const { data: lots } = await sb.from("lots").select("*").eq("cap_entree_id", capId).eq("categorie_id", catId).eq("statut", "en_cours");
+  zone.classList.remove("cache");
+  if (!lots?.length) { zone.innerHTML = `<span class="alerte">Aucun lot en cours pour cette catégorie.</span>`; return; }
+  const lot = lots[0];
+  const [{ data: dl }, { data: dc }] = await Promise.all([
+    sb.from("entrees").select("poids_net_kg").eq("lot_id", lot.id),
+    sb.from("entrees").select("poids_net_kg").eq("cap_entree_id", capId).eq("categorie_id", catId)]);
+  const cumul = dl.reduce((s, x) => s + x.poids_net_kg, 0), total = dc.reduce((s, x) => s + x.poids_net_kg, 0);
+  const lien = R.capsECat.find(x => x.cap_entree_id === capId && x.categorie_id === catId);
+  const plein = cumul / 1000 >= lot.capacite_t * SEUIL_ALERTE_LOT;
+  zone.dataset.lotId = lot.id;
+  zone.innerHTML = `Lot en cours <b>n°${lot.numero}</b> · <span class="mono">${t(cumul)} / ${nf(lot.capacite_t)} t</span>
+    ${plein ? badge("presque plein", "rouge") : ""}<br>
+    Reçu sur ce CAP pour cette catégorie : <span class="mono">${t(total)} t</span>${lien?.tonnage_max_t ? ` / <span class="mono">${nf(lien.tonnage_max_t)} t</span> autorisées` : ""}
+    <div class="actions" style="justify-content:flex-start;margin-top:10px"><button type="button" class="btn petit" id="btnLotSuivant">Passer au lot n°${lot.numero + 1}</button></div>`;
+  const b = $("btnLotSuivant");
+  b.onclick = async () => {
+    if (!b.dataset.ok) { b.dataset.ok = 1; b.textContent = `Confirmer : clôturer le lot n°${lot.numero}`; b.classList.add("primaire"); return; }
+    const { error } = await sb.rpc("lot_suivant", { p_cap_entree_id: capId, p_categorie_id: catId });
+    if (error) toast(lisible(error), true); else { toast(`Lot n°${lot.numero + 1} ouvert.`); infoLot(); }
+  };
+}
+
+function apercuNet(p) {
+  const veh = Number($(p + "Veh").value), brut = Number($(p + "Brut").value), e = veh && etatVehicule(veh), z = $(p + "Net");
+  if (!e || !brut) { z.classList.add("cache"); return; }
+  const net = Math.round(brut * 1000) - e.tare_kg;
+  z.innerHTML = `Tare <span class="mono">${t(e.tare_kg)} t</span> → poids net <b class="mono">${t(net)} t</b> ${net <= 0 ? badge("brut < tare", "rouge") : ""}`;
+  z.classList.remove("cache");
+}
+for (const p of ["e", "s"]) { $(p + "Veh").onchange = () => apercuNet(p); $(p + "Brut").oninput = () => apercuNet(p); }
+
+$("formEntree").onsubmit = async e => {
+  e.preventDefault();
+  const lotId = Number($("eLotInfo").dataset.lotId);
+  if (!lotId) { toast("Choisissez un CAP et une catégorie avec un lot en cours.", true); return; }
+  const { data, error } = await sb.from("entrees").insert({
+    date_pesee: $("eDate").value, heure_pesee: $("eHeure").value,
+    cap_entree_id: Number($("eCap").value), categorie_id: Number($("eCat").value), lot_id: lotId,
+    vehicule_id: Number($("eVeh").value), poids_brut_kg: Math.round(Number($("eBrut").value) * 1000),
+  }).select("poids_net_kg").single();
+  if (error) { toast(lisible(error), true); return; }
+  toast(`Entrée enregistrée : ${t(data.poids_net_kg)} t net.`);
+  $("eBrut").value = ""; $("eNet").classList.add("cache"); $("eHeure").value = maintenant();
+  infoLot(); dernieres("entrees");
+};
+
+async function dernieres(type) {
+  const { data, error } = await sb.from("v_" + type).select("*").eq("date_pesee", aujourdhui()).order("heure_pesee", { ascending: false }).limit(10);
+  const cible = $(type === "entrees" ? "dernieresEntrees" : "dernieresSorties");
+  if (error) { cible.innerHTML = `<div class="vide">${esc(lisible(error))}</div>`; return; }
+  cible.innerHTML = tableau(type === "entrees" ? [
+    { titre: "Heure", val: l => l.heure_pesee }, { titre: "CAP", val: l => l.cap_entree },
+    { titre: "Chantier", val: l => l.chantier }, { titre: "Cat.", val: l => l.categorie }, { titre: "Lot", val: l => l.lot },
+    { titre: "Camion", val: l => l.immatriculation }, { titre: "Net (t)", num: true, val: l => t(l.poids_net_kg) },
+  ] : [
+    { titre: "Heure", val: l => l.heure_pesee }, { titre: "CAP", val: l => l.cap_sortie },
+    { titre: "Exutoire", val: l => l.exutoire }, { titre: "Matériau", val: l => l.materiau },
+    { titre: "Camion", val: l => l.immatriculation }, { titre: "Net (t)", num: true, val: l => t(l.poids_net_kg) },
+  ], data, { vide: "Rien aujourd'hui." });
+}
+
+// ===================== NOUVEAU CAMION / NOUVELLE TARE =====================
+function formTare(conteneur, immatInitiale = "") {
+  const p = conteneur;
+  $(conteneur).innerHTML = `
+    <form id="${p}F" class="pile">
+      <label class="ch">Immatriculation <small>existante ou nouvelle</small><input id="${p}Immat" list="${p}Liste" required value="${esc(immatInitiale)}"></label>
+      <datalist id="${p}Liste">${R.vehicules.map(v => `<option value="${esc(v.immatriculation)}">`).join("")}</datalist>
+      <label class="ch">Tare mesurée (t)<input type="number" id="${p}Tare" step="0.02" min="0" required class="mono"></label>
+      <label class="ch">Transporteur<select id="${p}Tr" required></select></label>
+      <p class="muted" style="margin:0;font-size:12px">La nouvelle tare s'applique à partir de maintenant. Les pesées passées gardent l'ancienne.</p>
+      <div class="actions"><button class="btn primaire">Enregistrer la tare</button></div>
+    </form>`;
+  options($(p + "Tr"), R.entreprises.filter(e => e.est_transporteur), "id", e => e.nom);
+  const preRemplir = () => {
+    const v = R.vehicules.find(x => x.immatriculation === normImmat($(p + "Immat").value)), e = v && etatVehicule(v.id);
+    if (e) $(p + "Tr").value = e.transporteur_id;
+  };
+  $(p + "Immat").onchange = preRemplir; preRemplir();
+  $(p + "F").onsubmit = async ev => {
+    ev.preventDefault();
+    const immat = normImmat($(p + "Immat").value);
+    let v = R.vehicules.find(x => x.immatriculation === immat);
+    if (!v) {
+      const r = await sb.from("vehicules").insert({ immatriculation: immat }).select().single();
+      if (r.error) { toast(lisible(r.error), true); return; }
+      v = r.data;
+    }
+    const { error } = await sb.from("vehicules_historique").insert({
+      vehicule_id: v.id, tare_kg: Math.round(Number($(p + "Tare").value) * 1000), transporteur_id: Number($(p + "Tr").value) });
+    if (error) { toast(lisible(error), true); return; }
+    toast(`Tare enregistrée pour ${immat}.`);
+    await rafraichir();
+    if (ongletCourant === "gestion") afficherGestion();
+  };
+}
+
+// ===================== SORTIE =====================
+function remplirSortie() {
+  const d = $("sDate").value || aujourdhui();
+  const ouverts = R.capsS.filter(c => !c.date_validite || c.date_validite >= d);
+  options($("sCap"), ouverts, "id", c => `${c.numero} — ${nomEnt(c.entreprise_id)} → ${nomExu(c.exutoire_id)}`,
+    ouverts.length ? "— choisir —" : "— aucun CAP : à créer dans Gestionnaire —");
+  options($("sMat"), R.materiaux, "id", m => `${m.nom} (stock ${nf(m.quantite_t)} t)`,
+    R.materiaux.length ? "— choisir —" : "— aucun matériau : à créer dans Gestionnaire —");
+  remplirCamions($("sVeh"));
+}
+$("sDate").onchange = remplirSortie;
+$("formSortie").onsubmit = async e => {
+  e.preventDefault();
+  const { data, error } = await sb.from("sorties").insert({
+    date_pesee: $("sDate").value, heure_pesee: $("sHeure").value,
+    cap_sortie_id: Number($("sCap").value), materiau_id: Number($("sMat").value), lot: $("sLot").value || null,
+    vehicule_id: Number($("sVeh").value), poids_brut_kg: Math.round(Number($("sBrut").value) * 1000),
+  }).select("poids_net_kg").single();
+  if (error) { toast(lisible(error), true); return; }
+  toast(`Sortie enregistrée : ${t(data.poids_net_kg)} t net.`);
+  $("sBrut").value = ""; $("sNet").classList.add("cache"); $("sHeure").value = maintenant();
+  await chargerReferentiels(); remplirSortie(); dernieres("sorties");
+};
+
+// ===================== TABLEAU DE BORD =====================
+async function afficherCaps() {
+  const d = aujourdhui();
+  const [rE, rL, rS, rM, jE, jS] = await Promise.all([
+    sb.from("v_recap_cap_entree").select("*").gte("date_validite", d).order("cap_entree").order("categorie"),
+    sb.from("v_lots").select("*").eq("statut", "en_cours"),
+    sb.from("v_recap_cap_sortie").select("*").order("cap_sortie").order("materiau"),
+    sb.from("materiaux").select("*").order("nom"),
+    sb.from("entrees").select("poids_net_kg").eq("date_pesee", d),
+    sb.from("sorties").select("poids_net_kg").eq("date_pesee", d),
+  ]);
+  const err = [rE, rL, rS, rM, jE, jS].find(r => r.error);
+  if (err) { toast(lisible(err.error), true); return; }
+  const somme = a => a.reduce((s, x) => s + x.poids_net_kg, 0);
+  const parCap = {};
+  rE.data.forEach(l => (parCap[l.cap_entree] ??= []).push(l));
+  $("stats").innerHTML = [
+    ["Entrées du jour", `${t(somme(jE.data))} t`, `${jE.data.length} camions`],
+    ["Sorties du jour", `${t(somme(jS.data))} t`, `${jS.data.length} camions`],
+    ["CAP d'entrée ouverts", Object.keys(parCap).length, ""],
+    ["Lots presque pleins", rL.data.filter(l => l.alerte_capacite).length, `seuil ${SEUIL_ALERTE_LOT * 100} %`],
+  ].map(([a, b, c]) => `<div class="stat"><span>${a}</span><div class="mono">${b}</div><span>${c}</span></div>`).join("");
+
+  $("vueCapsEntree").innerHTML = Object.keys(parCap).length ? Object.entries(parCap).map(([num, lignes]) => {
+    const l0 = lignes[0];
+    return `<div class="card"><div class="card-h"><h3><span class="mono">${esc(num)}</span> · ${esc(l0.entreprise)} / ${esc(l0.chantier)}</h3>
+      <span class="muted">valide jusqu'au ${dateFr(l0.date_validite)} · total <b class="mono" style="color:var(--text)">${nf(l0.tonnage_global_cap_t)} t</b></span></div>
+      <div class="tbl-wrap">` + tableau([
+        { titre: "Catégorie", val: l => l.categorie },
+        { titre: "Reçu (t)", num: true, val: l => nf(l.tonnage_net_t) },
+        { titre: "Autorisé (t)", num: true, val: l => l.tonnage_max_t ? nf(l.tonnage_max_t) : "—" },
+        { titre: "Restant (t)", num: true, html: l => l.tonnage_max_t == null ? "—" :
+            (Number(l.tonnage_restant_t) < 0.1 * l.tonnage_max_t ? `<span class="alerte">${nf(l.tonnage_restant_t)}</span>` : nf(l.tonnage_restant_t)) },
+        { titre: "Lots remplis", num: true, val: l => l.lots_remplis },
+        { titre: "Lot en cours", num: true, html: l => {
+            const lot = rL.data.find(x => x.cap_entree === l.cap_entree && x.categorie === l.categorie);
+            return lot ? `n°${lot.lot} · ${nf(lot.tonnage_t)} t ${lot.alerte_capacite ? badge("plein", "rouge") : ""}` : "—"; } },
+      ], lignes) + `</div></div>`;
+  }).join("") : `<div class="card"><div class="vide">Aucun CAP d'entrée ouvert.</div></div>`;
+
+  $("vueCapsSortie").innerHTML = tableau([
+    { titre: "CAP", val: l => l.cap_sortie }, { titre: "Client", val: l => l.entreprise },
+    { titre: "Exutoire", val: l => l.exutoire }, { titre: "Matériau", val: l => l.materiau },
+    { titre: "Tonnage (t)", num: true, val: l => nf(l.tonnage_net_t) }, { titre: "Total CAP (t)", num: true, val: l => nf(l.tonnage_global_cap_t) },
+  ], rS.data, { vide: "Aucune sortie enregistrée." });
+  $("vueStock").innerHTML = tableau([
+    { titre: "Matériau", val: l => l.nom }, { titre: "Stock (t)", num: true, val: l => nf(l.quantite_t) },
+    { titre: "Prix (€/t)", num: true, val: l => euros(l.prix_t) },
+  ], rM.data, { vide: "Aucun matériau." });
+}
+
+// ===================== REGISTRES =====================
+const COLONNES = {
+  entrees: [
+    { titre: "Date", val: l => dateFr(l.date_pesee) }, { titre: "Heure", val: l => l.heure_pesee },
+    { titre: "Entreprise", val: l => l.entreprise }, { titre: "Chantier", val: l => l.chantier },
+    { titre: "CAP", val: l => l.cap_entree }, { titre: "Catégorie", val: l => l.categorie }, { titre: "Lot", val: l => l.lot },
+    { titre: "Immatriculation", val: l => l.immatriculation }, { titre: "Transporteur", val: l => l.transporteur },
+    { titre: "Brut (t)", num: true, val: l => t(l.poids_brut_kg) }, { titre: "Tare (t)", num: true, val: l => t(l.tare_kg) },
+    { titre: "Net (t)", num: true, val: l => t(l.poids_net_kg) }, { titre: "Saisi par", val: l => l.saisi_par },
+  ],
+  sorties: [
+    { titre: "Date", val: l => dateFr(l.date_pesee) }, { titre: "Heure", val: l => l.heure_pesee },
+    { titre: "Client", val: l => l.entreprise }, { titre: "Exutoire", val: l => l.exutoire },
+    { titre: "CAP", val: l => l.cap_sortie }, { titre: "Matériau", val: l => l.materiau }, { titre: "Lot", val: l => l.lot },
+    { titre: "Immatriculation", val: l => l.immatriculation }, { titre: "Transporteur", val: l => l.transporteur },
+    { titre: "Brut (t)", num: true, val: l => t(l.poids_brut_kg) }, { titre: "Tare (t)", num: true, val: l => t(l.tare_kg) },
+    { titre: "Net (t)", num: true, val: l => t(l.poids_net_kg) }, { titre: "Saisi par", val: l => l.saisi_par },
+  ],
+};
+async function afficherRegistre() {
+  const type = $("rType").value;
+  const { data, error } = await sb.from("v_" + type).select("*").gte("date_pesee", $("rDu").value).lte("date_pesee", $("rAu").value)
+    .order("date_pesee").order("heure_pesee");
+  if (error) { toast(lisible(error), true); return; }
+  registreCourant = data;
+  $("registreTitre").innerHTML = `${data.length} pesée(s) · total net <span class="mono">${t(data.reduce((s, l) => s + l.poids_net_kg, 0))} t</span>`;
+  $("vueRegistre").innerHTML = tableau(COLONNES[type], data, { vide: "Aucune pesée sur cette période." });
+}
+$("btnRegistre").onclick = afficherRegistre;
+$("rType").onchange = afficherRegistre;
+$("btnCsv").onclick = () => {
+  const cols = COLONNES[$("rType").value], cel = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const csv = [cols.map(c => cel(c.titre)).join(";"), ...registreCourant.map(l => cols.map(c => cel(c.val(l))).join(";"))].join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+  a.download = `registre_${$("rType").value}_${$("rDu").value}_${$("rAu").value}.csv`; a.click();
+};
+
+// ===================== GESTIONNAIRE =====================
+// Tables simples : décrites ici, l'écran est généré automatiquement
+const SIMPLES = {
+  entreprises: { titre: "Entreprises", table: "entreprises", cle: "entreprises",
+    champs: [{ k: "nom", l: "Nom", req: true }, { k: "siret", l: "SIRET", aide: "14 chiffres", pattern: "[0-9]{14}" },
+             { k: "est_transporteur", l: "Fait du transport", type: "case" }],
+    colonnes: [{ titre: "Nom", val: l => l.nom }, { titre: "SIRET", val: l => l.siret ?? "—" },
+               { titre: "Rôle", html: l => l.est_transporteur ? badge("Transporteur", "vert") : badge("Travaux", "gris") }] },
+  categories: { titre: "Catégories", table: "categories", cle: "categories",
+    champs: [{ k: "libelle", l: "Libellé", req: true }, { k: "prix_t", l: "Tarif de réception (€ HT / t)", type: "nombre", pas: "0.01" }],
+    colonnes: [{ titre: "Libellé", val: l => l.libelle }, { titre: "Tarif (€/t)", num: true, val: l => euros(l.prix_t) }] },
+  materiaux: { titre: "Matériaux", table: "materiaux", cle: "materiaux",
+    champs: [{ k: "nom", l: "Nom", req: true }, { k: "prix_t", l: "Prix de vente (€ HT / t)", type: "nombre", pas: "0.01" },
+             { k: "quantite_t", l: "Stock (t)", type: "nombre", pas: "0.001", aide: "Ajustement d'inventaire : les sorties le font baisser automatiquement" }],
+    colonnes: [{ titre: "Nom", val: l => l.nom }, { titre: "Stock (t)", num: true, val: l => nf(l.quantite_t) },
+               { titre: "Prix (€/t)", num: true, val: l => euros(l.prix_t) }] },
+  exutoires: { titre: "Exutoires", table: "exutoires", cle: "exutoires",
+    champs: [{ k: "nom", l: "Nom", req: true }], colonnes: [{ titre: "Nom", val: l => l.nom }] },
+  ecocentres: { titre: "Écocentres", table: "ecocentres", cle: "ecocentres",
+    champs: [{ k: "nom", l: "Nom", req: true }, { k: "code", l: "Code (3 lettres)", req: true, pattern: "[A-Za-z]{3}", maj: true,
+               aide: "Utilisé dans les n° de CAP. Le modifier ne renomme pas les CAP existants." }],
+    colonnes: [{ titre: "Nom", val: l => l.nom }, { titre: "Code", html: l => `<span class="mono">${esc(l.code)}</span>` }] },
+  codes_dechets: { titre: "Codes déchets", table: "codes_dechets", cle: "codes",
+    champs: [{ k: "code", l: "Code", req: true, aide: "Ajouter * pour un déchet dangereux, ex. 17 05 03*" }, { k: "nom", l: "Libellé", req: true }],
+    colonnes: [{ titre: "Code", html: l => `<span class="mono">${esc(l.code)}</span>` }, { titre: "Libellé", val: l => l.nom },
+               { titre: "", html: l => l.dangereux ? badge("Dangereux", "rouge") : "" }] },
+};
+const SECTIONS = [
+  ["capsE", "CAP d'entrée"], ["capsS", "CAP de sortie"], ["chantiers", "Chantiers"], ["entreprises", "Entreprises"],
+  ["vehicules", "Véhicules"], ["categories", "Catégories"], ["materiaux", "Matériaux"], ["exutoires", "Exutoires"],
+  ["ecocentres", "Écocentres"], ["codes_dechets", "Codes déchets"],
+];
+let gSection = "capsE", gSel = null;
+
+function afficherGestion() {
+  $("gPills").innerHTML = SECTIONS.map(([k, l]) => `<button class="pill ${k === gSection ? "actif" : ""}" data-k="${k}">${l}</button>`).join("");
+  $("gPills").querySelectorAll(".pill").forEach(b => b.onclick = () => { gSection = b.dataset.k; gSel = null; afficherGestion(); });
+  if (SIMPLES[gSection]) return vueSimple(SIMPLES[gSection]);
+  ({ capsE: vueCapsE, capsS: vueCapsS, chantiers: vueChantiers, vehicules: vueVehicules })[gSection]();
+}
+// Squelette commun : liste à gauche, formulaire à droite
+function squelette(titre, colonnes, lignes, filtre) {
+  $("gVue").innerHTML = `<div class="grille">
+    <div class="card"><div class="card-h"><h3>${esc(titre)} <span class="muted">(${lignes.length})</span></h3>
+      <div class="ligne" style="flex-wrap:nowrap"><input id="gRech" placeholder="Rechercher…" style="width:200px"><button class="btn primaire" id="gNouveau">+ Nouveau</button></div></div>
+      <div class="tbl-wrap" id="gListe"></div></div>
+    <div class="card" id="gForm"></div></div>`;
+  const dessiner = () => {
+    const q = $("gRech").value.toLowerCase();
+    $("gListe").innerHTML = tableau(colonnes, lignes.filter(l => !q || filtre(l).toLowerCase().includes(q)), { clic: true, sel: gSel, vide: "Rien pour l'instant. Cliquez sur « + Nouveau »." });
+    $("gListe").querySelectorAll("tr[data-id]").forEach(tr => tr.onclick = () => { gSel = Number(tr.dataset.id); afficherGestion(); });
+  };
+  $("gRech").oninput = dessiner; dessiner();
+  $("gNouveau").onclick = () => { gSel = null; afficherGestion(); };
+}
+function enteteForm(titre, sousTitre = "") {
+  return `<div class="card-h"><h3>${esc(titre)}</h3>${sousTitre ? `<span class="muted mono">${esc(sousTitre)}</span>` : ""}</div>`;
+}
+async function apresModif(message) {
+  toast(message); await rafraichir(); afficherGestion();
+}
+
+// ---------- Tables simples ----------
+function vueSimple(conf) {
+  const lignes = R[conf.cle], ligne = lignes.find(l => l.id === gSel);
+  squelette(conf.titre, conf.colonnes, lignes, l => conf.champs.map(c => l[c.k] ?? "").join(" "));
+  $("gForm").innerHTML = enteteForm(ligne ? "Modifier" : "Nouveau · " + conf.titre) + `<form class="card-b" id="gF"><div class="pile">` +
+    conf.champs.map(c => c.type === "case"
+      ? `<label class="case"><input type="checkbox" name="${c.k}" ${ligne?.[c.k] ? "checked" : ""}> ${esc(c.l)}</label>`
+      : `<label class="ch">${esc(c.l)}${c.aide ? ` <small>${esc(c.aide)}</small>` : ""}
+          <input name="${c.k}" ${c.type === "nombre" ? `type="number" step="${c.pas}" class="mono"` : ""} ${c.req ? "required" : ""}
+          ${c.pattern ? `pattern="${c.pattern}"` : ""} value="${esc(ligne?.[c.k] ?? "")}"></label>`).join("") +
+    `</div><div class="actions">${ligne ? `<button type="button" class="btn danger" id="gSuppr">Supprimer</button>` : ""}
+      <button class="btn primaire">${ligne ? "Enregistrer" : "Créer"}</button></div></form>`;
+  $("gF").onsubmit = async e => {
+    e.preventDefault();
+    const f = e.target, obj = {};
+    for (const c of conf.champs) {
+      const el = f.elements[c.k];
+      if (c.type === "case") obj[c.k] = el.checked;
+      else if (c.type === "nombre") obj[c.k] = el.value === "" ? (c.k === "quantite_t" ? 0 : null) : Number(el.value);
+      else obj[c.k] = el.value.trim() === "" ? null : (c.maj ? el.value.trim().toUpperCase() : el.value.trim());
+    }
+    const { data, error } = ligne
+      ? await sb.from(conf.table).update(obj).eq("id", ligne.id).select().single()
+      : await sb.from(conf.table).insert(obj).select().single();
+    if (error) { toast(lisible(error), true); return; }
+    gSel = data.id; apresModif(ligne ? "Modifications enregistrées." : "Créé.");
+  };
+  if (ligne) boutonSuppr($("gSuppr"), async () => {
+    const { error } = await sb.from(conf.table).delete().eq("id", ligne.id);
+    if (error) { toast(lisible(error), true); return; }
+    gSel = null; apresModif("Supprimé.");
+  });
+}
+
+// ---------- Chantiers (avec entreprises liées) ----------
+function vueChantiers() {
+  const entsDe = id => R.chantiersEnt.filter(x => x.chantier_id === id).map(x => x.entreprise_id);
+  const lignes = R.chantiers, ligne = lignes.find(l => l.id === gSel);
+  squelette("Chantiers", [
+    { titre: "Nom", val: l => l.nom },
+    { titre: "Entreprises", val: l => entsDe(l.id).map(nomEnt).join(", ") || "—" },
+    { titre: "CAP", num: true, val: l => R.capsE.filter(c => c.chantier_id === l.id).length },
+  ], lignes, l => l.nom + " " + entsDe(l.id).map(nomEnt).join(" "));
+  const actuelles = ligne ? entsDe(ligne.id) : [];
+  $("gForm").innerHTML = enteteForm(ligne ? "Modifier le chantier" : "Nouveau chantier") + `<form class="card-b pile" id="gF">
+    <label class="ch">Nom du chantier<input name="nom" required value="${esc(ligne?.nom ?? "")}"></label>
+    <div class="ch">Entreprises intervenant sur le chantier
+      <div class="info pile" style="max-height:240px;overflow:auto">${R.entreprises.map(e => `<label class="case">
+        <input type="checkbox" name="ent" value="${e.id}" ${actuelles.includes(e.id) ? "checked" : ""}> ${esc(e.nom)}
+        ${e.est_transporteur ? badge("Transporteur", "vert") : ""}</label>`).join("") || "Aucune entreprise."}</div></div>
+    <div class="actions">${ligne ? `<button type="button" class="btn danger" id="gSuppr">Supprimer</button>` : ""}
+      <button class="btn primaire">${ligne ? "Enregistrer" : "Créer"}</button></div></form>`;
+  $("gF").onsubmit = async e => {
+    e.preventDefault();
+    const nom = e.target.elements.nom.value.trim();
+    const coches = [...e.target.querySelectorAll("input[name=ent]:checked")].map(x => Number(x.value));
+    let id = ligne?.id;
+    const r = ligne ? await sb.from("chantiers").update({ nom }).eq("id", id) : await sb.from("chantiers").insert({ nom }).select().single();
+    if (r.error) { toast(lisible(r.error), true); return; }
+    if (!ligne) id = r.data.id;
+    const ajout = coches.filter(x => !actuelles.includes(x)), retrait = actuelles.filter(x => !coches.includes(x));
+    if (ajout.length) { const { error } = await sb.from("chantiers_entreprises").insert(ajout.map(x => ({ chantier_id: id, entreprise_id: x })));
+      if (error) { toast(lisible(error), true); return; } }
+    for (const x of retrait) { const { error } = await sb.from("chantiers_entreprises").delete().eq("chantier_id", id).eq("entreprise_id", x);
+      if (error) { toast(`${nomEnt(x)} : ` + lisible(error), true); } }
+    gSel = id; apresModif(ligne ? "Chantier mis à jour." : "Chantier créé.");
+  };
+  if (ligne) boutonSuppr($("gSuppr"), async () => {
+    const { error } = await sb.from("chantiers").delete().eq("id", ligne.id);
+    if (error) { toast(lisible(error), true); return; }
+    gSel = null; apresModif("Chantier supprimé.");
+  });
+}
+
+// ---------- CAP d'entrée ----------
+function vueCapsE() {
+  const lignes = R.capsE, ligne = lignes.find(l => l.id === gSel), d = aujourdhui();
+  squelette("CAP d'entrée", [
+    { titre: "N°", html: l => `<span class="mono">${esc(l.numero)}</span>` },
+    { titre: "Chantier", val: l => nomCh(l.chantier_id) }, { titre: "Entreprise", val: l => nomEnt(l.entreprise_id) },
+    { titre: "Validité", html: l => l.date_validite >= d ? badge(dateFr(l.date_validite), "vert") : badge("expiré " + dateFr(l.date_validite), "rouge") },
+    { titre: "Cat.", num: true, val: l => R.capsECat.filter(x => x.cap_entree_id === l.id).length },
+  ], lignes, l => `${l.numero} ${nomCh(l.chantier_id)} ${nomEnt(l.entreprise_id)}`);
+  const liens = ligne ? R.capsECat.filter(x => x.cap_entree_id === ligne.id) : [];
+  const dans1an = new Date(); dans1an.setFullYear(dans1an.getFullYear() + 1);
+  $("gForm").innerHTML = enteteForm(ligne ? "Modifier le CAP" : "Nouveau CAP d'entrée", ligne?.numero ?? "n° attribué à la création") + `
+    <form class="card-b pile" id="gF">
+      <div class="champs">
+        <label class="ch">Écocentre<select name="eco" required ${ligne ? "disabled" : ""}></select></label>
+        <label class="ch">Date de validité<input type="date" name="val" required value="${ligne?.date_validite ?? dans1an.toLocaleDateString("sv-SE")}"></label>
+        <label class="ch">Chantier<select name="ch" required ${ligne ? "disabled" : ""}></select></label>
+        <label class="ch">Entreprise<select name="ent" required ${ligne ? "disabled" : ""}></select></label>
+      </div>
+      <div class="ch">Catégories autorisées et tonnage maximum
+        <div class="info cats">${R.categories.map(c => { const l = liens.find(x => x.categorie_id === c.id);
+          return `<label class="case"><input type="checkbox" name="cat" value="${c.id}" ${l ? "checked" : ""}> ${esc(c.libelle)}</label>
+            <input type="number" name="max${c.id}" step="0.001" min="0" placeholder="tonnage max (t)" class="mono" value="${l?.tonnage_max_t ?? ""}">`; }).join("")}</div>
+        <small>Le lot n°1 de chaque catégorie s'ouvre automatiquement.</small></div>
+      <p id="gAide" class="muted" style="margin:0;font-size:12px"></p>
+      <div class="actions"><button class="btn primaire">${ligne ? "Enregistrer" : "Créer le CAP"}</button></div>
+    </form>`;
+  const f = $("gF");
+  options(f.elements.eco, R.ecocentres, "id", x => `${x.nom} (${x.code})`);
+  options(f.elements.ch, R.chantiers, "id", x => x.nom);
+  if (ligne) { f.elements.eco.value = ligne.ecocentre_id; f.elements.ch.value = ligne.chantier_id; }
+  else if (R.ecocentres.length === 1) f.elements.eco.value = R.ecocentres[0].id;
+  const majEnt = () => {
+    const ids = R.chantiersEnt.filter(x => x.chantier_id === Number(f.elements.ch.value)).map(x => x.entreprise_id);
+    options(f.elements.ent, R.entreprises.filter(e => ids.includes(e.id)), "id", e => e.nom);
+    if (ids.length === 1) f.elements.ent.value = ids[0];
+    $("gAide").textContent = f.elements.ch.value && !ids.length ? "Aucune entreprise liée à ce chantier : ajoutez-en une dans l'onglet Chantiers." : "";
+  };
+  f.elements.ch.onchange = majEnt; majEnt();
+  if (ligne) f.elements.ent.value = ligne.entreprise_id;
+  f.querySelectorAll("input[name^=max]").forEach(inp => inp.oninput = () => {
+    if (inp.value) f.querySelector(`input[name=cat][value="${inp.name.slice(3)}"]`).checked = true; });
+
+  f.onsubmit = async e => {
+    e.preventDefault();
+    const coches = [...f.querySelectorAll("input[name=cat]:checked")].map(x => Number(x.value));
+    if (!coches.length) { toast("Cochez au moins une catégorie.", true); return; }
+    const maxDe = id => f.elements["max" + id].value === "" ? null : Number(f.elements["max" + id].value);
+    let id = ligne?.id, numero = ligne?.numero;
+    if (ligne) {
+      const { error } = await sb.from("caps_entree").update({ date_validite: f.elements.val.value }).eq("id", id);
+      if (error) { toast(lisible(error), true); return; }
+    } else {
+      const { data, error } = await sb.from("caps_entree").insert({ ecocentre_id: Number(f.elements.eco.value),
+        chantier_id: Number(f.elements.ch.value), entreprise_id: Number(f.elements.ent.value), date_validite: f.elements.val.value }).select().single();
+      if (error) { toast(lisible(error), true); return; }
+      id = data.id; numero = data.numero;
+    }
+    const existants = liens.map(x => x.categorie_id);
+    const nouvelles = coches.filter(c => !existants.includes(c));
+    if (nouvelles.length) { const { error } = await sb.from("caps_entree_categories").insert(nouvelles.map(c => ({ cap_entree_id: id, categorie_id: c, tonnage_max_t: maxDe(c) })));
+      if (error) { toast(lisible(error), true); return; } }
+    for (const c of coches.filter(c => existants.includes(c))) {
+      const l = liens.find(x => x.categorie_id === c);
+      const avant = l.tonnage_max_t == null ? null : Number(l.tonnage_max_t);
+      if (avant !== maxDe(c)) {
+        const { error } = await sb.from("caps_entree_categories").update({ tonnage_max_t: maxDe(c) }).eq("cap_entree_id", id).eq("categorie_id", c);
+        if (error) toast(lisible(error), true);
+      }
+    }
+    for (const c of existants.filter(c => !coches.includes(c))) {
+      const { error } = await sb.from("caps_entree_categories").delete().eq("cap_entree_id", id).eq("categorie_id", c);
+      if (error) toast(`${R.categories.find(x => x.id === c)?.libelle} : impossible de retirer une catégorie qui a déjà reçu des apports.`, true);
+    }
+    gSel = id; apresModif(ligne ? "CAP mis à jour." : `CAP créé : ${numero}`);
+  };
+}
+
+// ---------- CAP de sortie ----------
+function vueCapsS() {
+  const lignes = R.capsS, ligne = lignes.find(l => l.id === gSel), d = aujourdhui();
+  squelette("CAP de sortie", [
+    { titre: "N°", html: l => `<span class="mono">${esc(l.numero)}</span>` },
+    { titre: "Client", val: l => nomEnt(l.entreprise_id) }, { titre: "Exutoire", val: l => nomExu(l.exutoire_id) },
+    { titre: "Validité", html: l => !l.date_validite ? badge("illimitée", "gris") : l.date_validite >= d ? badge(dateFr(l.date_validite), "vert") : badge("expiré", "rouge") },
+  ], lignes, l => `${l.numero} ${nomEnt(l.entreprise_id)} ${nomExu(l.exutoire_id)}`);
+  $("gForm").innerHTML = enteteForm(ligne ? "Modifier le CAP" : "Nouveau CAP de sortie", ligne?.numero ?? "n° attribué à la création") + `
+    <form class="card-b pile" id="gF">
+      <label class="ch">Écocentre<select name="eco" required ${ligne ? "disabled" : ""}></select></label>
+      <label class="ch">Client (acheteur)<select name="cli" required></select></label>
+      <label class="ch">Exutoire<select name="exu" required></select></label>
+      <label class="ch">Date de validité <small>facultatif</small><input type="date" name="val" value="${ligne?.date_validite ?? ""}"></label>
+      <div class="actions"><button class="btn primaire">${ligne ? "Enregistrer" : "Créer le CAP"}</button></div>
+    </form>`;
+  const f = $("gF");
+  options(f.elements.eco, R.ecocentres, "id", x => `${x.nom} (${x.code})`);
+  options(f.elements.cli, R.entreprises, "id", x => x.nom);
+  options(f.elements.exu, R.exutoires, "id", x => x.nom, R.exutoires.length ? "— choisir —" : "— créer d'abord un exutoire —");
+  if (ligne) { f.elements.eco.value = ligne.ecocentre_id; f.elements.cli.value = ligne.entreprise_id; f.elements.exu.value = ligne.exutoire_id; }
+  else if (R.ecocentres.length === 1) f.elements.eco.value = R.ecocentres[0].id;
+  f.onsubmit = async e => {
+    e.preventDefault();
+    const obj = { entreprise_id: Number(f.elements.cli.value), exutoire_id: Number(f.elements.exu.value), date_validite: f.elements.val.value || null };
+    const { data, error } = ligne
+      ? await sb.from("caps_sortie").update(obj).eq("id", ligne.id).select().single()
+      : await sb.from("caps_sortie").insert({ ...obj, ecocentre_id: Number(f.elements.eco.value) }).select().single();
+    if (error) { toast(lisible(error), true); return; }
+    gSel = data.id; apresModif(ligne ? "CAP mis à jour." : `CAP créé : ${data.numero}`);
+  };
+}
+
+// ---------- Véhicules ----------
+function vueVehicules() {
+  const lignes = R.vehicules.map(v => ({ ...v, e: etatVehicule(v.id) })), ligne = lignes.find(l => l.id === gSel);
+  squelette("Véhicules", [
+    { titre: "Immatriculation", html: l => `<span class="mono">${esc(l.immatriculation)}</span>` },
+    { titre: "Tare (t)", num: true, val: l => l.e ? t(l.e.tare_kg) : "—" },
+    { titre: "Transporteur", val: l => l.e ? nomEnt(l.e.transporteur_id) : "—" },
+    { titre: "Depuis", val: l => l.e ? new Date(l.e.en_vigueur_depuis).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "—" },
+  ], lignes, l => `${l.immatriculation} ${l.e ? nomEnt(l.e.transporteur_id) : ""}`);
+  $("gForm").innerHTML = enteteForm(ligne ? "Nouvelle tare" : "Nouveau camion", ligne?.immatriculation) + `<div class="card-b pile"><div id="gTare"></div>
+    ${ligne ? `<div class="ch">Historique<div class="tbl-wrap info" style="padding:0">${tableau([
+      { titre: "Depuis", val: h => new Date(h.en_vigueur_depuis).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) },
+      { titre: "Tare (t)", num: true, val: h => t(h.tare_kg) }, { titre: "Transporteur", val: h => nomEnt(h.transporteur_id) },
+    ], R.historique.filter(h => h.vehicule_id === ligne.id))}</div></div>` : ""}</div>`;
+  formTare("gTare", ligne?.immatriculation ?? "");
+}
+</script>
+</body>
+</html>
