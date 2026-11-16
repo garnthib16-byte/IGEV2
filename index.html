@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traçabilité terres – IRE</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; padding: 12px; max-width: 1100px; }
+  nav button { padding: 8px 14px; margin: 0 4px 6px 0; }
+  nav button.actif { font-weight: bold; background: #ddd; }
+  label { display: block; margin-top: 8px; font-size: 14px; }
+  input, select { padding: 6px; font-size: 15px; min-width: 260px; }
+  button { cursor: pointer; padding: 6px 12px; font-size: 15px; }
+  table { border-collapse: collapse; margin: 8px 0 18px; font-size: 14px; }
+  th, td { border: 1px solid #aaa; padding: 4px 8px; text-align: left; }
+  td.num, th.num { text-align: right; }
+  .ok { color: green; } .err { color: #c00; } .alerte { color: #c00; font-weight: bold; }
+  .info { background: #f3f3f3; padding: 8px; margin-top: 8px; }
+  .cache { display: none; }
+  fieldset { margin-top: 12px; }
+  details { margin: 10px 0; }
+  .ligne { display: flex; gap: 12px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+
+<!-- ===================== CONNEXION ===================== -->
+<div id="ecranConnexion">
+  <h2>Traçabilité des terres – Connexion</h2>
+  <form id="formConnexion">
+    <label>Email <br><input type="email" id="email" required autocomplete="username"></label>
+    <label>Mot de passe <br><input type="password" id="mdp" required autocomplete="current-password"></label>
+    <p><button type="submit">Se connecter</button></p>
+    <p id="msgConnexion" class="err"></p>
+  </form>
+</div>
+
+<!-- ===================== APPLICATION ===================== -->
+<div id="ecranAppli" class="cache">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h2 style="margin:6px 0">Traçabilité des terres</h2>
+    <span><span id="utilisateur"></span> <button id="btnDeconnexion">Déconnexion</button></span>
+  </div>
+  <nav>
+    <button data-onglet="entree" class="actif">Entrée</button>
+    <button data-onglet="sortie">Sortie</button>
+    <button data-onglet="caps">CAP ouverts</button>
+    <button data-onglet="registres">Registres</button>
+  </nav>
+
+  <!-- ---------- ENTRÉE ---------- -->
+  <section id="onglet-entree">
+    <h3>Nouvelle entrée</h3>
+    <form id="formEntree">
+      <div class="ligne">
+        <label>Date<br><input type="date" id="eDate" required></label>
+        <label>Heure<br><input type="time" id="eHeure" step="1" required></label>
+      </div>
+      <label>CAP d'entrée<br><select id="eCap" required></select></label>
+      <div id="eCapInfo" class="info cache"></div>
+      <label>Catégorie<br><select id="eCat" required></select></label>
+      <div id="eLotInfo" class="info cache"></div>
+      <label>Camion<br><select id="eVeh" required></select></label>
+      <label>Poids brut (t)<br><input type="number" id="eBrut" step="0.02" min="0" required></label>
+      <div id="eNet" class="info cache"></div>
+      <p><button type="submit">Enregistrer l'entrée</button></p>
+      <p id="msgEntree"></p>
+    </form>
+    <details><summary>Nouveau camion / nouvelle tare</summary><div id="tareEntree"></div></details>
+    <h4>Dernières entrées du jour</h4>
+    <div id="dernieresEntrees"></div>
+  </section>
+
+  <!-- ---------- SORTIE ---------- -->
+  <section id="onglet-sortie" class="cache">
+    <h3>Nouvelle sortie</h3>
+    <form id="formSortie">
+      <div class="ligne">
+        <label>Date<br><input type="date" id="sDate" required></label>
+        <label>Heure<br><input type="time" id="sHeure" step="1" required></label>
+      </div>
+      <label>CAP de sortie<br><select id="sCap" required></select></label>
+      <div id="sCapInfo" class="info cache"></div>
+      <label>Matériau<br><select id="sMat" required></select></label>
+      <label>N° de lot (facultatif)<br><input type="text" id="sLot"></label>
+      <label>Camion<br><select id="sVeh" required></select></label>
+      <label>Poids brut (t)<br><input type="number" id="sBrut" step="0.02" min="0" required></label>
+      <div id="sNet" class="info cache"></div>
+      <p><button type="submit">Enregistrer la sortie</button></p>
+      <p id="msgSortie"></p>
+    </form>
+    <details><summary>Nouveau camion / nouvelle tare</summary><div id="tareSortie"></div></details>
+    <details><summary>Nouveau CAP de sortie</summary>
+      <form id="formCapSortie">
+        <label>Écocentre<br><select id="csEco" required></select></label>
+        <label>Client<br><select id="csClient" required></select></label>
+        <label>Exutoire<br><select id="csExu" required></select></label>
+        <label>Date de validité (facultatif)<br><input type="date" id="csVal"></label>
+        <p><button type="submit">Créer le CAP de sortie</button></p>
+        <p id="msgCapSortie"></p>
+      </form>
+    </details>
+  </section>
+
+  <!-- ---------- CAP OUVERTS ---------- -->
+  <section id="onglet-caps" class="cache">
+    <h3>CAP d'entrée ouverts</h3>
+    <div id="vueCapsEntree"></div>
+    <h3>CAP de sortie</h3>
+    <div id="vueCapsSortie"></div>
+    <h3>Stock des matériaux</h3>
+    <div id="vueStock"></div>
+  </section>
+
+  <!-- ---------- REGISTRES ---------- -->
+  <section id="onglet-registres" class="cache">
+    <h3>Registres</h3>
+    <div class="ligne">
+      <label>Registre<br>
+        <select id="rType"><option value="entrees">Entrées</option><option value="sorties">Sorties</option></select></label>
+      <label>Du<br><input type="date" id="rDu"></label>
+      <label>Au<br><input type="date" id="rAu"></label>
+    </div>
+    <p><button id="btnRegistre">Afficher</button> <button id="btnCsv">Exporter en CSV (Excel)</button></p>
+    <div id="vueRegistre"></div>
+  </section>
+</div>
+
+<script>
+// ===================== CONFIGURATION =====================
+// Clé PUBLIQUE : elle peut être visible, les données sont protégées par la RLS.
+const SUPABASE_URL = "https://cyobkyhogebacdnrfdwu.supabase.co";
+const SUPABASE_KEY = "sb_publishable_daXRRzQflYOdjtfF_1Tadg_BPbmefib";
+const SEUIL_ALERTE_LOT = 0.95;   // alerte à 95 % de la capacité du lot
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+let R = {};            // référentiels chargés
+let registreCourant = [];
+let demarre = false;
+
+// ===================== OUTILS =====================
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const aujourdhui = () => new Date().toLocaleDateString("sv-SE");
+const maintenant = () => new Date().toTimeString().slice(0, 8);
+const t = kg => (kg / 1000).toLocaleString("fr-FR", {minimumFractionDigits: 2, maximumFractionDigits: 3});
+const tNum = v => Number(v).toLocaleString("fr-FR", {minimumFractionDigits: 2, maximumFractionDigits: 3});
+const nomEnt = id => R.entreprises.find(e => e.id === id)?.nom ?? "?";
+const normImmat = s => s.toUpperCase().replace(/[\s-]/g, "");
+function msg(id, texte, ok) { $(id).className = ok ? "ok" : "err"; $(id).textContent = texte; }
+function options(sel, liste, valeur, libelle, vide = "— choisir —") {
+  sel.innerHTML = `<option value="">${vide}</option>` +
+    liste.map(x => `<option value="${x[valeur]}">${esc(libelle(x))}</option>`).join("");
+}
+function tableau(colonnes, lignes) {
+  return `<table><tr>${colonnes.map(c => `<th class="${c.num ? "num" : ""}">${esc(c.titre)}</th>`).join("")}</tr>` +
+    lignes.map(l => `<tr>${colonnes.map(c => `<td class="${c.num ? "num" : ""}">${c.html ? c.html(l) : esc(c.val(l))}</td>`).join("")}</tr>`).join("") +
+    `</table>`;
+}
+
+// ===================== CONNEXION =====================
+$("formConnexion").onsubmit = async e => {
+  e.preventDefault();
+  const { error } = await sb.auth.signInWithPassword({ email: $("email").value, password: $("mdp").value });
+  if (error) $("msgConnexion").textContent = "Connexion refusée : " + error.message;
+};
+$("btnDeconnexion").onclick = () => sb.auth.signOut();
+
+sb.auth.onAuthStateChange((_evt, session) => {
+  if (session) {
+    $("ecranConnexion").classList.add("cache");
+    $("ecranAppli").classList.remove("cache");
+    $("utilisateur").textContent = session.user.email;
+    if (!demarre) { demarre = true; setTimeout(demarrer, 0); }
+  } else {
+    demarre = false;
+    $("ecranAppli").classList.add("cache");
+    $("ecranConnexion").classList.remove("cache");
+  }
+});
+
+// ===================== ONGLETS =====================
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.remove("actif"));
+  b.classList.add("actif");
+  document.querySelectorAll("section").forEach(s => s.classList.add("cache"));
+  $("onglet-" + b.dataset.onglet).classList.remove("cache");
+  if (b.dataset.onglet === "caps") afficherCaps();
+  if (b.dataset.onglet === "registres") afficherRegistre();
+});
+
+// ===================== CHARGEMENT DES RÉFÉRENTIELS =====================
+async function chargerReferentiels() {
+  const req = {
+    ecocentres:  sb.from("ecocentres").select("*").order("nom"),
+    entreprises: sb.from("entreprises").select("*").order("nom"),
+    chantiers:   sb.from("chantiers").select("*").order("nom"),
+    categories:  sb.from("categories").select("*").order("libelle"),
+    exutoires:   sb.from("exutoires").select("*").order("nom"),
+    materiaux:   sb.from("materiaux").select("*").order("nom"),
+    vehicules:   sb.from("vehicules").select("*").order("immatriculation"),
+    historique:  sb.from("vehicules_historique").select("*").order("en_vigueur_depuis", { ascending: false }),
+    capsE:       sb.from("caps_entree").select("*").order("numero", { ascending: false }),
+    capsECat:    sb.from("caps_entree_categories").select("*"),
+    capsS:       sb.from("caps_sortie").select("*").order("numero", { ascending: false }),
+  };
+  const cles = Object.keys(req);
+  const res = await Promise.all(Object.values(req));
+  res.forEach((r, i) => { if (r.error) throw r.error; R[cles[i]] = r.data; });
+}
+
+// Tare et transporteur en vigueur maintenant pour un véhicule
+const etatVehicule = vid => R.historique.find(h => h.vehicule_id === vid && new Date(h.en_vigueur_depuis) <= new Date());
+
+function remplirCamions(sel) {
+  const liste = R.vehicules.map(v => ({ ...v, etat: etatVehicule(v.id) }));
+  options(sel, liste, "id", v => v.etat
+    ? `${v.immatriculation} — tare ${t(v.etat.tare_kg)} t — ${nomEnt(v.etat.transporteur_id)}`
+    : `${v.immatriculation} — PAS DE TARE`);
+}
+
+async function demarrer() {
+  try { await chargerReferentiels(); }
+  catch (e) { alertePage("Erreur de chargement : " + e.message); return; }
+  for (const p of ["e", "s"]) { $(p + "Date").value = aujourdhui(); $(p + "Heure").value = maintenant(); }
+  $("rDu").value = aujourdhui(); $("rAu").value = aujourdhui();
+  remplirEntree(); remplirSortie();
+  formTare("tareEntree"); formTare("tareSortie");
+  dernieresEntrees();
+}
+function alertePage(texte) { document.body.insertAdjacentHTML("afterbegin", `<p class="err">${esc(texte)}</p>`); }
+
+// ===================== ENTRÉE =====================
+function remplirEntree() {
+  const d = $("eDate").value || aujourdhui();
+  const ouverts = R.capsE.filter(c => c.date_validite >= d);
+  options($("eCap"), ouverts, "id", c => `${c.numero} — ${nomEnt(c.entreprise_id)} / ${R.chantiers.find(x => x.id === c.chantier_id)?.nom}`);
+  options($("eCat"), [], "id", x => x);
+  remplirCamions($("eVeh"));
+  $("eCapInfo").classList.add("cache"); $("eLotInfo").classList.add("cache");
+}
+$("eDate").onchange = remplirEntree;
+
+$("eCap").onchange = () => {
+  const capId = Number($("eCap").value);
+  const cats = R.capsECat.filter(x => x.cap_entree_id === capId)
+    .map(x => ({ ...x, libelle: R.categories.find(c => c.id === x.categorie_id)?.libelle }))
+    .sort((a, b) => a.libelle.localeCompare(b.libelle));
+  options($("eCat"), cats, "categorie_id", c => c.libelle);
+  const cap = R.capsE.find(c => c.id === capId);
+  $("eCapInfo").classList.toggle("cache", !cap);
+  if (cap) $("eCapInfo").textContent = `Valide jusqu'au ${new Date(cap.date_validite).toLocaleDateString("fr-FR")}`;
+  $("eLotInfo").classList.add("cache");
+};
+$("eCat").onchange = infoLot;
+
+async function infoLot() {
+  const capId = Number($("eCap").value), catId = Number($("eCat").value);
+  const zone = $("eLotInfo");
+  if (!capId || !catId) { zone.classList.add("cache"); return; }
+  const { data: lots, error } = await sb.from("lots").select("*")
+    .eq("cap_entree_id", capId).eq("categorie_id", catId).eq("statut", "en_cours");
+  if (error || !lots.length) { zone.innerHTML = `<span class="err">Aucun lot en cours.</span>`; zone.classList.remove("cache"); return; }
+  const lot = lots[0];
+  const { data: ent } = await sb.from("entrees").select("poids_net_kg").eq("lot_id", lot.id);
+  const cumulKg = ent.reduce((s, x) => s + x.poids_net_kg, 0);
+  const lien = R.capsECat.find(x => x.cap_entree_id === capId && x.categorie_id === catId);
+  const { data: tot } = await sb.from("entrees").select("poids_net_kg").eq("cap_entree_id", capId).eq("categorie_id", catId);
+  const totKg = tot.reduce((s, x) => s + x.poids_net_kg, 0);
+  const alerte = cumulKg / 1000 >= lot.capacite_t * SEUIL_ALERTE_LOT;
+  zone.dataset.lotId = lot.id;
+  zone.innerHTML = `Lot en cours : <b>n°${lot.numero}</b> — ${t(cumulKg)} t / ${tNum(lot.capacite_t)} t
+    ${alerte ? `<span class="alerte"> ⚠ lot presque plein</span>` : ""}
+    <br>Catégorie sur ce CAP : ${t(totKg)} t reçues${lien?.tonnage_max_t ? ` / ${tNum(lien.tonnage_max_t)} t autorisées` : ""}
+    <br><button type="button" id="btnLotSuivant">Passer au lot n°${lot.numero + 1}</button>
+    <span id="confirmLot"></span>`;
+  zone.classList.remove("cache");
+  $("btnLotSuivant").onclick = () => {
+    $("confirmLot").innerHTML = ` Le lot n°${lot.numero} sera marqué rempli. <button type="button" id="btnLotOk">Confirmer</button>`;
+    $("btnLotOk").onclick = async () => {
+      const { error } = await sb.rpc("lot_suivant", { p_cap_entree_id: capId, p_categorie_id: catId });
+      if (error) msg("msgEntree", error.message, false); else { msg("msgEntree", "Nouveau lot ouvert.", true); infoLot(); }
+    };
+  };
+}
+
+function apercuNet(prefixe) {
+  const veh = Number($(prefixe + "Veh").value), brut = Number($(prefixe + "Brut").value);
+  const etat = veh && etatVehicule(veh), zone = $(prefixe + "Net");
+  if (!etat || !brut) { zone.classList.add("cache"); return; }
+  const net = Math.round(brut * 1000) - etat.tare_kg;
+  zone.innerHTML = `Tare ${t(etat.tare_kg)} t → <b>poids net ${t(net)} t</b>` + (net <= 0 ? ` <span class="err">(brut inférieur à la tare)</span>` : "");
+  zone.classList.remove("cache");
+}
+for (const p of ["e", "s"]) { $(p + "Veh").onchange = () => apercuNet(p); $(p + "Brut").oninput = () => apercuNet(p); }
+
+$("formEntree").onsubmit = async e => {
+  e.preventDefault();
+  const lotId = Number($("eLotInfo").dataset.lotId);
+  if (!lotId) { msg("msgEntree", "Choisir un CAP et une catégorie avec un lot en cours.", false); return; }
+  const ligne = {
+    date_pesee: $("eDate").value, heure_pesee: $("eHeure").value,
+    cap_entree_id: Number($("eCap").value), categorie_id: Number($("eCat").value), lot_id: lotId,
+    vehicule_id: Number($("eVeh").value), poids_brut_kg: Math.round(Number($("eBrut").value) * 1000),
+  };
+  const { data, error } = await sb.from("entrees").insert(ligne).select("poids_net_kg").single();
+  if (error) { msg("msgEntree", "Erreur : " + error.message, false); return; }
+  msg("msgEntree", `Entrée enregistrée : ${t(data.poids_net_kg)} t net.`, true);
+  $("eBrut").value = ""; $("eNet").classList.add("cache"); $("eHeure").value = maintenant();
+  infoLot(); dernieresEntrees();
+};
+
+async function dernieresEntrees() {
+  const { data, error } = await sb.from("v_entrees").select("*").eq("date_pesee", aujourdhui())
+    .order("heure_pesee", { ascending: false }).limit(10);
+  if (error) { $("dernieresEntrees").textContent = error.message; return; }
+  $("dernieresEntrees").innerHTML = data.length ? tableau([
+    { titre: "Heure", val: l => l.heure_pesee }, { titre: "CAP", val: l => l.cap_entree },
+    { titre: "Chantier", val: l => l.chantier }, { titre: "Cat.", val: l => l.categorie },
+    { titre: "Lot", val: l => l.lot }, { titre: "Camion", val: l => l.immatriculation },
+    { titre: "Net (t)", num: true, val: l => t(l.poids_net_kg) },
+  ], data) : "Aucune entrée aujourd'hui.";
+}
+
+// ===================== NOUVEAU CAMION / NOUVELLE TARE =====================
+function formTare(conteneur) {
+  const p = conteneur;
+  $(conteneur).innerHTML = `
+    <form id="${p}F">
+      <label>Immatriculation (existante ou nouvelle)<br><input id="${p}Immat" list="${p}Liste" required></label>
+      <datalist id="${p}Liste">${R.vehicules.map(v => `<option value="${esc(v.immatriculation)}">`).join("")}</datalist>
+      <label>Tare mesurée (t)<br><input type="number" id="${p}Tare" step="0.02" min="0" required></label>
+      <label>Transporteur<br><select id="${p}Tr" required></select></label>
+      <p><button type="submit">Enregistrer la tare</button></p>
+      <p id="${p}Msg"></p>
+    </form>`;
+  options($(p + "Tr"), R.entreprises.filter(e => e.est_transporteur), "id", e => e.nom);
+  $(p + "Immat").onchange = () => {
+    const v = R.vehicules.find(x => x.immatriculation === normImmat($(p + "Immat").value));
+    const etat = v && etatVehicule(v.id);
+    if (etat) $(p + "Tr").value = etat.transporteur_id;
+  };
+  $(p + "F").onsubmit = async e => {
+    e.preventDefault();
+    const immat = normImmat($(p + "Immat").value);
+    let v = R.vehicules.find(x => x.immatriculation === immat);
+    if (!v) {
+      const r = await sb.from("vehicules").insert({ immatriculation: immat }).select().single();
+      if (r.error) { msg(p + "Msg", r.error.message, false); return; }
+      v = r.data;
+    }
+    const { error } = await sb.from("vehicules_historique").insert({
+      vehicule_id: v.id, tare_kg: Math.round(Number($(p + "Tare").value) * 1000),
+      transporteur_id: Number($(p + "Tr").value),
+    });
+    if (error) { msg(p + "Msg", error.message, false); return; }
+    msg(p + "Msg", `Tare enregistrée pour ${immat}.`, true);
+    await chargerReferentiels();
+    remplirCamions($("eVeh")); remplirCamions($("sVeh"));
+    formTare("tareEntree"); formTare("tareSortie");
+  };
+}
+
+// ===================== SORTIE =====================
+function remplirSortie() {
+  const d = $("sDate").value || aujourdhui();
+  const ouverts = R.capsS.filter(c => !c.date_validite || c.date_validite >= d);
+  options($("sCap"), ouverts, "id", c => `${c.numero} — ${nomEnt(c.entreprise_id)} → ${R.exutoires.find(x => x.id === c.exutoire_id)?.nom}`,
+    ouverts.length ? "— choisir —" : "— aucun CAP de sortie, en créer un ci-dessous —");
+  options($("sMat"), R.materiaux, "id", m => `${m.nom} (stock ${tNum(m.quantite_t)} t)`,
+    R.materiaux.length ? "— choisir —" : "— aucun matériau (à créer dans Supabase) —");
+  remplirCamions($("sVeh"));
+  options($("csEco"), R.ecocentres, "id", x => `${x.nom} (${x.code})`);
+  options($("csClient"), R.entreprises, "id", x => x.nom);
+  options($("csExu"), R.exutoires, "id", x => x.nom, R.exutoires.length ? "— choisir —" : "— aucun exutoire (à créer dans Supabase) —");
+}
+$("sDate").onchange = remplirSortie;
+
+$("formSortie").onsubmit = async e => {
+  e.preventDefault();
+  const ligne = {
+    date_pesee: $("sDate").value, heure_pesee: $("sHeure").value,
+    cap_sortie_id: Number($("sCap").value), materiau_id: Number($("sMat").value),
+    lot: $("sLot").value || null, vehicule_id: Number($("sVeh").value),
+    poids_brut_kg: Math.round(Number($("sBrut").value) * 1000),
+  };
+  const { data, error } = await sb.from("sorties").insert(ligne).select("poids_net_kg").single();
+  if (error) { msg("msgSortie", "Erreur : " + error.message, false); return; }
+  msg("msgSortie", `Sortie enregistrée : ${t(data.poids_net_kg)} t net.`, true);
+  $("sBrut").value = ""; $("sNet").classList.add("cache"); $("sHeure").value = maintenant();
+  await chargerReferentiels(); const mat = $("sMat").value; remplirSortie(); $("sMat").value = mat;
+};
+
+$("formCapSortie").onsubmit = async e => {
+  e.preventDefault();
+  const { data, error } = await sb.from("caps_sortie").insert({
+    ecocentre_id: Number($("csEco").value), entreprise_id: Number($("csClient").value),
+    exutoire_id: Number($("csExu").value), date_validite: $("csVal").value || null,
+  }).select("numero").single();
+  if (error) { msg("msgCapSortie", error.message, false); return; }
+  msg("msgCapSortie", `CAP créé : ${data.numero}`, true);
+  await chargerReferentiels(); remplirSortie();
+};
+
+// ===================== CAP OUVERTS =====================
+async function afficherCaps() {
+  const d = aujourdhui();
+  const [rE, rL, rS, rM] = await Promise.all([
+    sb.from("v_recap_cap_entree").select("*").gte("date_validite", d).order("cap_entree").order("categorie"),
+    sb.from("v_lots").select("*").eq("statut", "en_cours"),
+    sb.from("v_recap_cap_sortie").select("*").order("cap_sortie").order("materiau"),
+    sb.from("materiaux").select("*").order("nom"),
+  ]);
+  const err = [rE, rL, rS, rM].find(r => r.error);
+  if (err) { $("vueCapsEntree").textContent = err.error.message; return; }
+
+  const parCap = {};
+  rE.data.forEach(l => (parCap[l.cap_entree] ??= []).push(l));
+  $("vueCapsEntree").innerHTML = Object.keys(parCap).length ? Object.entries(parCap).map(([num, lignes]) => {
+    const l0 = lignes[0];
+    return `<b>${esc(num)}</b> — ${esc(l0.entreprise)} / chantier ${esc(l0.chantier)} — valide jusqu'au
+      ${new Date(l0.date_validite).toLocaleDateString("fr-FR")} — <b>total ${tNum(l0.tonnage_global_cap_t)} t</b>` +
+      tableau([
+        { titre: "Catégorie", val: l => l.categorie },
+        { titre: "Reçu (t)", num: true, val: l => tNum(l.tonnage_net_t) },
+        { titre: "Autorisé (t)", num: true, val: l => l.tonnage_max_t ? tNum(l.tonnage_max_t) : "—" },
+        { titre: "Restant (t)", num: true, html: l => l.tonnage_max_t == null ? "—" :
+            (Number(l.tonnage_restant_t) < 0.1 * l.tonnage_max_t ? `<span class="alerte">${tNum(l.tonnage_restant_t)}</span>` : tNum(l.tonnage_restant_t)) },
+        { titre: "Lots remplis", num: true, val: l => l.lots_remplis },
+        { titre: "Lot en cours", num: true, html: l => {
+            const lot = rL.data.find(x => x.cap_entree === l.cap_entree && x.categorie === l.categorie);
+            return lot ? `n°${lot.lot} : ${tNum(lot.tonnage_t)} t` + (lot.alerte_capacite ? ` <span class="alerte">⚠</span>` : "") : "—";
+        } },
+      ], lignes);
+  }).join("") : "Aucun CAP d'entrée ouvert.";
+
+  $("vueCapsSortie").innerHTML = rS.data.length ? tableau([
+    { titre: "CAP", val: l => l.cap_sortie }, { titre: "Client", val: l => l.entreprise },
+    { titre: "Exutoire", val: l => l.exutoire }, { titre: "Matériau", val: l => l.materiau },
+    { titre: "Tonnage (t)", num: true, val: l => tNum(l.tonnage_net_t) },
+    { titre: "Total CAP (t)", num: true, val: l => tNum(l.tonnage_global_cap_t) },
+  ], rS.data) : "Aucune sortie enregistrée.";
+
+  $("vueStock").innerHTML = rM.data.length ? tableau([
+    { titre: "Matériau", val: l => l.nom }, { titre: "Stock (t)", num: true, val: l => tNum(l.quantite_t) },
+  ], rM.data) : "Aucun matériau.";
+}
+
+// ===================== REGISTRES =====================
+const COLONNES = {
+  entrees: [
+    { titre: "Date", val: l => new Date(l.date_pesee).toLocaleDateString("fr-FR") }, { titre: "Heure", val: l => l.heure_pesee },
+    { titre: "Entreprise", val: l => l.entreprise }, { titre: "Chantier", val: l => l.chantier },
+    { titre: "CAP", val: l => l.cap_entree }, { titre: "Catégorie", val: l => l.categorie }, { titre: "Lot", val: l => l.lot },
+    { titre: "Immatriculation", val: l => l.immatriculation }, { titre: "Transporteur", val: l => l.transporteur },
+    { titre: "Brut (t)", num: true, val: l => t(l.poids_brut_kg) }, { titre: "Tare (t)", num: true, val: l => t(l.tare_kg) },
+    { titre: "Net (t)", num: true, val: l => t(l.poids_net_kg) }, { titre: "Saisi par", val: l => l.saisi_par },
+  ],
+  sorties: [
+    { titre: "Date", val: l => new Date(l.date_pesee).toLocaleDateString("fr-FR") }, { titre: "Heure", val: l => l.heure_pesee },
+    { titre: "Client", val: l => l.entreprise }, { titre: "Exutoire", val: l => l.exutoire },
+    { titre: "CAP", val: l => l.cap_sortie }, { titre: "Matériau", val: l => l.materiau }, { titre: "Lot", val: l => l.lot },
+    { titre: "Immatriculation", val: l => l.immatriculation }, { titre: "Transporteur", val: l => l.transporteur },
+    { titre: "Brut (t)", num: true, val: l => t(l.poids_brut_kg) }, { titre: "Tare (t)", num: true, val: l => t(l.tare_kg) },
+    { titre: "Net (t)", num: true, val: l => t(l.poids_net_kg) }, { titre: "Saisi par", val: l => l.saisi_par },
+  ],
+};
+
+async function afficherRegistre() {
+  const type = $("rType").value;
+  const { data, error } = await sb.from(type === "entrees" ? "v_entrees" : "v_sorties").select("*")
+    .gte("date_pesee", $("rDu").value).lte("date_pesee", $("rAu").value)
+    .order("date_pesee").order("heure_pesee");
+  if (error) { $("vueRegistre").textContent = error.message; return; }
+  registreCourant = data;
+  const total = data.reduce((s, l) => s + l.poids_net_kg, 0);
+  $("vueRegistre").innerHTML = `<p>${data.length} pesée(s) — total net <b>${t(total)} t</b></p>` +
+    (data.length ? tableau(COLONNES[type], data) : "");
+}
+$("btnRegistre").onclick = afficherRegistre;
+$("rType").onchange = afficherRegistre;
+
+$("btnCsv").onclick = () => {
+  const cols = COLONNES[$("rType").value];
+  const cellule = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const csv = [cols.map(c => cellule(c.titre)).join(";"),
+    ...registreCourant.map(l => cols.map(c => cellule(c.val(l))).join(";"))].join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+  a.download = `registre_${$("rType").value}_${$("rDu").value}_${$("rAu").value}.csv`;
+  a.click();
+};
+</script>
+</body>
+</html>
